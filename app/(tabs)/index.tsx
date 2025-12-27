@@ -1,98 +1,212 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
+import { Bike, Navigation } from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import MapView, { Marker, Region } from 'react-native-maps';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+//Lecce
+const DEFAULT_REGION = {
+  latitude: 40.35344,
+  longitude: 18.17197,
+  latitudeDelta: 0.05,
+  longitudeDelta: 0.05,
+};
 
-export default function HomeScreen() {
+export default function RiderMapScreen() {
+  const router = useRouter();
+  const mapRef = useRef<MapView>(null);
+
+  const [region, setRegion] = useState<Region>(DEFAULT_REGION);
+  const [riderLocation, setRiderLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(true);
+
+
+  useEffect(() => {
+    (async () => {
+      try {
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert("Permesso negato", "Impossibile accedere alla posizione. Usa la mappa manualmente.");
+          setRiderLocation({ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude });
+          setLoadingLocation(false);
+          return;
+        }
+
+        let location = await Location.getCurrentPositionAsync({});
+        
+        const userReg = {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+          latitudeDelta: 0.01, // Zoom più stretto per il rider
+          longitudeDelta: 0.01,
+        };
+
+        setRegion(userReg);
+        setRiderLocation({ latitude: userReg.latitude, longitude: userReg.longitude });
+        
+        // Anima la mappa sulla posizione
+        mapRef.current?.animateToRegion(userReg, 1000);
+
+      } catch (error) {
+        console.log("Errore GPS:", error);
+        setRiderLocation({ latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude });
+      } finally {
+        setLoadingLocation(false);
+      }
+    })();
+  }, []);
+
+
+  const handleMapPress = (e: any) => {
+    const coords = e.nativeEvent.coordinate;
+    setRiderLocation(coords);
+  };
+
+
+  const handleConfirmPosition = () => {
+    if (!riderLocation) return;
+    
+    // Navighiamo alla pagina di stato attivo passando le coordinate
+    router.push({
+      pathname: '/rider/active',
+      params: { 
+        lat: riderLocation.latitude, 
+        lon: riderLocation.longitude 
+      }
+    });
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <View style={styles.container}>
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        initialRegion={DEFAULT_REGION}
+        showsUserLocation={true} 
+        showsMyLocationButton={false}
+        onPress={handleMapPress} 
+      >
+        {/* Marker del Rider (Sostituisce DeliveryMarker) */}
+        {riderLocation && (
+            <Marker coordinate={riderLocation} title="La tua posizione di partenza">
+                <View style={styles.markerContainer}>
+                    <View style={styles.markerCircle}>
+                        <Bike size={20} color="white" />
+                    </View>
+                    <View style={styles.markerArrow} />
+                </View>
+            </Marker>
+        )}
+      </MapView>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      {/* --- UI OVERLAYS --- */}
+
+      {/* Titolo in alto */}
+      <View style={styles.topBadge}>
+        <Text style={styles.topBadgeText}>Dove inizi il turno?</Text>
+      </View>
+
+      {/* Tasto indietro*/}
+      <TouchableOpacity 
+        style={styles.myLocationButton}
+        onPress={async () => {
+            let location = await Location.getCurrentPositionAsync({});
+            const newRegion = {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+                latitudeDelta: 0.01,
+                longitudeDelta: 0.01
+            };
+            setRiderLocation({ latitude: newRegion.latitude, longitude: newRegion.longitude });
+            mapRef.current?.animateToRegion(newRegion, 500);
+        }}
+      >
+        <Navigation size={24} color="#2563EB" />
+      </TouchableOpacity>
+      
+      {/* Bottone Conferma */}
+      <View style={styles.bottomContainer}>
+        <TouchableOpacity 
+          style={[styles.confirmButton, loadingLocation && styles.disabledButton]}
+          onPress={handleConfirmPosition}
+          disabled={loadingLocation}
+        >
+            {loadingLocation ? (
+                <ActivityIndicator color="white" />
+            ) : (
+                <Text style={styles.confirmButtonText}>Conferma Posizione</Text>
+            )}
+        </TouchableOpacity>
+      </View>
+
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  container: { flex: 1 },
+  map: { width: '100%', height: '100%' },
+  
+  topBadge: {
     position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    backgroundColor: 'white',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
   },
+  topBadgeText: { fontWeight: 'bold', color: '#334155' },
+
+  myLocationButton: {
+    position: 'absolute',
+    bottom: 100,
+    right: 20,
+    backgroundColor: 'white',
+    width: 50, height: 50, borderRadius: 25,
+    justifyContent: 'center', alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+  },
+
+  bottomContainer: {
+    position: 'absolute',
+    bottom: 30,
+    width: '100%',
+    paddingHorizontal: 20,
+  },
+  confirmButton: {
+    backgroundColor: '#2563EB',
+    width: '100%',
+    paddingVertical: 16,
+    borderRadius: 15,
+    alignItems: 'center',
+    elevation: 5,
+  },
+  disabledButton: { backgroundColor: '#94A3B8' },
+  confirmButtonText: { color: 'white', fontWeight: 'bold', fontSize: 18 },
+
+  // Stili Marker Custom Inline
+  markerContainer: { alignItems: 'center' },
+  markerCircle: {
+    backgroundColor: '#2563EB',
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  markerArrow: {
+    width: 0, height: 0,
+    borderLeftWidth: 6, borderLeftColor: 'transparent',
+    borderRightWidth: 6, borderRightColor: 'transparent',
+    borderTopWidth: 8, borderTopColor: '#2563EB',
+    marginTop: -2,
+  }
 });
