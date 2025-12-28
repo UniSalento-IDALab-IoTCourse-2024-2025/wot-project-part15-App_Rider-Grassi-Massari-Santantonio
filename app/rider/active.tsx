@@ -4,14 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { acceptOrder, fetchActiveOrder, fetchOrdersByPosition, getCoordinatesFromAddress, OrderDto } from '../../lib/api';
 
-
-
-
-// Funzione per "riparare" l'ordine se mancano le coordinate
 const enrichOrderWithCoordinates = async (order: OrderDto): Promise<OrderDto> => {
     const newOrder = { ...order };
 
-    // 1. Controllo e riparo Shop Address
     if (!newOrder.shopAddress.latitude || Number(newOrder.shopAddress.latitude) === 0) {
         const coords = await getCoordinatesFromAddress(newOrder.shopAddress.street, newOrder.shopAddress.city);
         if (coords) {
@@ -20,7 +15,6 @@ const enrichOrderWithCoordinates = async (order: OrderDto): Promise<OrderDto> =>
         }
     }
 
-    // 2. Controllo e riparo Delivery Address
     if (!newOrder.deliveryAddress.latitude || Number(newOrder.deliveryAddress.latitude) === 0) {
         const coords = await getCoordinatesFromAddress(newOrder.deliveryAddress.street, newOrder.deliveryAddress.city);
         if (coords) {
@@ -42,16 +36,13 @@ export default function ActiveShiftScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [checkingActive, setCheckingActive] = useState(true); 
 
-
   useEffect(() => {
     const checkActiveOrder = async () => {
         try {
             let activeOrder = await fetchActiveOrder();
             
             if (activeOrder) {
-                // FIX: Geocoding Frontend se mancano coordinate
                 activeOrder = await enrichOrderWithCoordinates(activeOrder);
-
                 router.replace({
                     pathname: '/rider/delivery',
                     params: { orderData: JSON.stringify(activeOrder) }
@@ -66,7 +57,6 @@ export default function ActiveShiftScreen() {
 
     checkActiveOrder();
   }, []); 
-
 
   useEffect(() => {
     const getAddressFromOSM = async () => {
@@ -90,7 +80,6 @@ export default function ActiveShiftScreen() {
     setIsLoading(true);
     try {
         const foundOrders = await fetchOrdersByPosition(parseFloat(lat as string), parseFloat(lon as string));
-        // nuovi ordini da prendere
         const pendingOrders = foundOrders.filter(o => o.orderStatus === 'PENDING' || o.orderStatus === 'IN_PROGRESS');
         
         setOrders(pendingOrders);
@@ -109,19 +98,29 @@ export default function ActiveShiftScreen() {
   const handleAccept = async (orderId: string) => {
     setAcceptingId(orderId);
     
-    let orderToPass = orders.find(o => o.id === orderId);
+    //  Recupera l'oggetto ordine corrente
+    const originalOrder = orders.find(o => o.id === orderId);
 
+    //  Chiama il server per accettare
     const success = await acceptOrder(orderId);
     
-    if (success && orderToPass) {
-        // FIX: Geocoding Frontend anche qui prima di passare alla consegna
-        orderToPass = await enrichOrderWithCoordinates(orderToPass);
+    if (success && originalOrder) {
+      
+        const updatedOrder: OrderDto = { 
+            ...originalOrder, 
+            orderStatus: 'DELIVER' 
+        };
+        
+        
+        const finalOrder = await enrichOrderWithCoordinates(updatedOrder);
 
+        // Pulisce la lista locale
         setOrders(prev => prev.filter(o => o.id !== orderId));
+        
         
         router.push({
             pathname: '/rider/delivery',
-            params: { orderData: JSON.stringify(orderToPass) }
+            params: { orderData: JSON.stringify(finalOrder) }
         });
     } else {
         Alert.alert("Errore", "L'ordine è stato preso da un altro rider o c'è stato un problema.");
@@ -171,7 +170,6 @@ export default function ActiveShiftScreen() {
         </TouchableOpacity>
     </View>
   );
-
 
   if (checkingActive) {
       return (

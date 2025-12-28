@@ -5,13 +5,14 @@ import mqtt from 'mqtt';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
+import { useAuth } from '../../context/AuthContext';
 import { getRouteFromOSRM, LatLng, OrderDto, updateOrderStatus } from '../../lib/api';
+import { sendOrderTopicToBox } from '../../lib/bluetooth';
 
 const { width, height } = Dimensions.get('window');
 
 const MQTT_BROKER_URL = 'ws://10.0.2.2:9001'; 
 
-// Funzione helper per parsing sicuro
 const parseCoord = (val: string | number | undefined): number => {
     if (val === undefined || val === null) return 0;
     if (typeof val === 'number') return val;
@@ -19,6 +20,7 @@ const parseCoord = (val: string | number | undefined): number => {
 };
 
 export default function DeliveryScreen() {
+  const { connectedDevice } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams();
   
@@ -29,61 +31,49 @@ export default function DeliveryScreen() {
   const [heading, setHeading] = useState(0);
   
   const mapRef = useRef<MapView>(null);
-  
-
   const mqttClient = useRef<mqtt.MqttClient | null>(null); 
 
-
-
-
- 
   useEffect(() => {
     if (params.orderData) {
       try {
         const parsedOrder = JSON.parse(params.orderData as string);
-        console.log(">> Ordine caricato:", parsedOrder.id, parsedOrder.orderStatus);
         setOrder(parsedOrder);
       } catch (e) {
-        console.error("Errore parsing ordine", e);
+        console.error(e);
       }
     }
   }, [params.orderData]);
 
   useEffect(() => {
-    console.log("Connessione MQTT in corso...");
     try {
-        
         const client = mqtt.connect(MQTT_BROKER_URL, {
             clientId: `rider_${Math.random().toString(16).substr(2, 8)}`,
             keepalive: 60,
-            reconnectPeriod: 5000, // Riprova ogni 5 secondi se cade
+            reconnectPeriod: 5000,
         });
 
         client.on('connect', () => {
-            console.log("MQTT Connesso!");
+            console.log("MQTT Connesso");
         });
 
         client.on('error', (err) => {
-            console.warn("MQTT Errore:", err);
+            console.warn(err);
         });
 
         mqttClient.current = client;
 
-        
         return () => {
             if (client) {
                 client.end();
-                console.log("MQTT Disconnesso");
             }
         };
     } catch (e) {
-        console.error("Errore inizializzazione MQTT", e);
+        console.error(e);
     }
   }, []);
 
   const isPhasePickup = order?.orderStatus === 'DELIVER'; 
 
-  
   const getTargetCoords = (): LatLng => {
       if (!order) return { latitude: 0, longitude: 0 };
       
@@ -97,16 +87,11 @@ export default function DeliveryScreen() {
           lon = parseCoord(order.deliveryAddress.longitude);
       }
 
-      if (lat === 0 || lon === 0) {
-          console.warn(`>> ATTENZIONE: Coordinate target ${isPhasePickup ? 'Shop' : 'Client'} sono 0,0!`);
-      }
-
       return { latitude: lat, longitude: lon };
   };
 
   const targetCoords = getTargetCoords();
 
-  
   useEffect(() => {
     let subscription: Location.LocationSubscription;
     (async () => {
@@ -117,7 +102,9 @@ export default function DeliveryScreen() {
       }
       
       subscription = await Location.watchPositionAsync(
-        { accuracy: Location.Accuracy.High, timeInterval: 3000, distanceInterval: 10 },
+        //ogni 5 secondi si fa il calcolo della posizione, se questa e' variata di di almeno 20 metri
+        //si notifica la nuova posizione
+        { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 20 },
         (loc) => {
             const newLoc = {
                 latitude: loc.coords.latitude,
@@ -126,11 +113,8 @@ export default function DeliveryScreen() {
             setRiderLocation(newLoc);
             if (loc.coords.heading) setHeading(loc.coords.heading);
 
-            
             if (mqttClient.current && mqttClient.current.connected && order) {
-                
                 const topic = `rider/position/${order.shopId}/${order.id}`;
-                console.log(`>> Pubblico posizione su topic ${topic}`);
                 
                 const payload = JSON.stringify({
                     latitude: newLoc.latitude,
@@ -139,67 +123,58 @@ export default function DeliveryScreen() {
                     timestamp: Date.now()
                 });
 
-                console.log(`[MQTT] Invio a ${topic}:`, newLoc.latitude.toFixed(5), newLoc.longitude.toFixed(5));
-                //  QoS 0, Retain False
                 mqttClient.current.publish(topic, payload, { qos: 0, retain: false }, (err) => {
-                    if (err) console.warn("Errore publish MQTT", err);
-                    else console.log(`MQTT Inviato a ${topic}`);
+                    if (err) console.warn(err);
                 });
             }
-            
         }
       );
     })();
     return () => { if(subscription) subscription.remove(); };
   }, [order]); 
 
-
   const calculateRoute = async () => {
       if (!riderLocation || riderLocation.latitude === 0) return;
       if (!targetCoords || targetCoords.latitude === 0) return;
       
-      console.log(`>> Calcolo percorso: Rider(${riderLocation.latitude.toFixed(4)}) -> Target(${targetCoords.latitude.toFixed(4)})`);
-      
       const points = await getRouteFromOSRM(riderLocation, targetCoords);
       
       if (points.length > 0) {
-          console.log(`>> Percorso trovato: ${points.length} punti.`);
           setRouteCoords(points);
           mapRef.current?.fitToCoordinates(points, {
               edgePadding: { top: 80, right: 80, bottom: 80, left: 80 },
               animated: true
           });
       } else {
-          console.warn(">> OSRM non ha restituito punti.");
           Alert.alert("Navigazione", "Impossibile calcolare il percorso stradale.");
       }
   };
 
-  
   useEffect(() => {
       if (riderLocation && targetCoords.latitude !== 0) {
           calculateRoute();
       }
   }, [riderLocation?.latitude, targetCoords.latitude, isPhasePickup]);
 
- 
   const handleAction = async () => {
     if (!order) return;
     setLoading(true);
     try {
         if (isPhasePickup) {
-            console.log(">> Invio updateStatus: DELIVERING");
             const success = await updateOrderStatus(order.id, 'DELIVERING');
             if (success) {
                 setOrder({ ...order, orderStatus: 'DELIVERING' });
                 setRouteCoords([]); 
+                
+                const topic = `rider/position/${order.shopId}/${order.id}`;
+                await sendOrderTopicToBox(connectedDevice, topic);
+
                 setTimeout(calculateRoute, 500); 
-                Alert.alert("Ritiro Confermato", "Vai dal cliente.");
+                Alert.alert("Ritiro Confermato", "Topic inviato al Box. Vai dal cliente.");
             } else {
                 Alert.alert("Errore", "Il server non ha confermato il ritiro.");
             }
         } else {
-            console.log(">> Invio updateStatus: DELIVERED");
             const success = await updateOrderStatus(order.id, 'DELIVERED');
             if (success) {
                 Alert.alert("Consegna Completata", "Ottimo lavoro!");

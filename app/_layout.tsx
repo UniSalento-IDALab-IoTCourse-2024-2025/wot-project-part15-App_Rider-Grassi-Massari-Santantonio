@@ -1,31 +1,43 @@
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import "../global.css";
 import "../shim";
 
 function RootLayoutNav() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, connectedDevice } = useAuth(); 
   const segments = useSegments();
   const router = useRouter();
 
   useEffect(() => {
     if (isLoading) return;
 
-    // Controlla il gruppo di route attuale
     const inAuthGroup = segments[0] === '(auth)';
-    
+    const inTabsGroup = segments[0] === '(tabs)';
+    const inConnectScreen = segments[0] === 'connect-device';
+
     if (!user && !inAuthGroup) {
-      //  non loggato,  login
+      // 1. Non loggato -> Login
       router.replace('/(auth)/login');
-    } else if (user && inAuthGroup) {
-      // loggato, dashboard
-      router.replace('/(tabs)');
+    } else if (user) {
+      // Utente Loggato
+      if (!connectedDevice) {
+          // 2. Loggato ma Non Connesso -> Connect Device
+         if (!inConnectScreen) {
+           router.replace('/connect-device');
+         }
+      } else if (connectedDevice) {
+         // 3. Loggato e Connesso -> Dashboard
+         
+         if (inAuthGroup || inConnectScreen) {
+           router.replace('/(tabs)');
+         }
+      }
     }
-  }, [user, isLoading, segments]);
+  }, [user, isLoading, connectedDevice, segments]);
 
   if (isLoading) {
     return (
@@ -40,6 +52,7 @@ function RootLayoutNav() {
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />
+        <Stack.Screen name="connect-device" options={{ title: 'Connessione Box' }} />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </View>
@@ -47,7 +60,6 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
@@ -56,10 +68,3 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff', 
-  },
-});
