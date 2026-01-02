@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacit
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../../context/AuthContext';
 import { getRouteFromOSRM, LatLng, OrderDto, updateOrderStatus } from '../../lib/api';
-import { sendOrderTopicToBox } from '../../lib/bluetooth';
+import { sendCommandToBox, sendOrderTopicToBox } from '../../lib/bluetooth';
 
 const { width, height } = Dimensions.get('window');
 
@@ -177,6 +177,9 @@ export default function DeliveryScreen() {
         } else {
             const success = await updateOrderStatus(order.id, 'DELIVERED');
             if (success) {
+                if (connectedDevice) {
+                    await sendCommandToBox(connectedDevice, `ORDER_COMPLETED:${order.id}`);
+                }
                 Alert.alert("Consegna Completata", "Ottimo lavoro!");
                 router.dismissAll(); 
             } else {
