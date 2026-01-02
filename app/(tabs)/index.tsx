@@ -67,7 +67,6 @@ export default function RiderMapScreen() {
   const handleConfirmPosition = () => {
     if (!riderLocation) return;
     
-    // Navighiamo alla pagina di stato attivo passando le coordinate
     router.push({
       pathname: '/rider/active',
       params: { 
@@ -87,7 +86,7 @@ export default function RiderMapScreen() {
         showsMyLocationButton={false}
         onPress={handleMapPress} 
       >
-        {/* Marker del Rider (Sostituisce DeliveryMarker) */}
+       
         {riderLocation && (
             <Marker coordinate={riderLocation} title="La tua posizione di partenza">
                 <View style={styles.markerContainer}>
@@ -193,7 +192,6 @@ const styles = StyleSheet.create({
   disabledButton: { backgroundColor: '#94A3B8' },
   confirmButtonText: { color: 'white', fontWeight: 'bold', fontSize: 18 },
 
-  // Stili Marker Custom Inline
   markerContainer: { alignItems: 'center' },
   markerCircle: {
     backgroundColor: '#2563EB',

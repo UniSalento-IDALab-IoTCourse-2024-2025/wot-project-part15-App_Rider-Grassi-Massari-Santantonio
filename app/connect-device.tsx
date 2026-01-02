@@ -3,15 +3,27 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { Device } from 'react-native-ble-plx';
 import { useAuth } from '../context/AuthContext';
 import { connectToFastGoBox, requestBluetoothPermissions, scanForFastGoBox, stopScan } from '../lib/bluetooth';
 
 export default function ConnectDeviceScreen() {
-  const { setConnectedDevice, logout } = useAuth(); 
+  const { setConnectedDevice, logout, user, isLoading } = useAuth(); 
+  
   const [isScanning, setIsScanning] = useState(false);
   const [devices, setDevices] = useState<Device[]>([]);
+  const [isConnecting, setIsConnecting] = useState(false);
+
+
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#2563EB" />
+        <ThemedText style={{ marginTop: 10 }}>Recupero profilo rider...</ThemedText>
+      </View>
+    );
+  }
 
   const handleStartScan = async () => {
     const hasPermission = await requestBluetoothPermissions();
@@ -25,6 +37,7 @@ export default function ConnectDeviceScreen() {
     
     scanForFastGoBox(
         (device) => {
+            // Evita duplicati nella lista
             setDevices(prev => !prev.find(d => d.id === device.id) ? [...prev, device] : prev);
         },
         (error) => {
@@ -33,6 +46,7 @@ export default function ConnectDeviceScreen() {
         }
     );
 
+    // Stop scansione dopo 10 secondi
     setTimeout(() => {
       stopScan();
       setIsScanning(false);
@@ -40,14 +54,26 @@ export default function ConnectDeviceScreen() {
   };
 
   const handleConnect = async (device: Device) => {
+
+    if (!user?.id) {
+        Alert.alert("Errore", "ID Rider non trovato. Prova a fare logout e login.");
+        return;
+    }
+
+    setIsConnecting(true);
+
     try {
-      const connected = await connectToFastGoBox(device.id);
+   
+      const connected = await connectToFastGoBox(device.id, user.id);
+      
       if (connected) {
-          Alert.alert("Successo", "Box FastGo collegato correttamente!");
+          Alert.alert("Successo", "Box FastGo collegato e sincronizzato!");
           setConnectedDevice(connected);
       }
     } catch (e: any) {
       Alert.alert("Errore", e.message || "Impossibile connettersi");
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -61,21 +87,36 @@ export default function ConnectDeviceScreen() {
       </ThemedView>
 
       <ThemedText>
-        Per iniziare il turno, devi connetterti al tuo FastGo Box.
+        Benvenuto, <ThemedText type="defaultSemiBold">{user?.name}</ThemedText>.
+        {"\n"}Connettiti al box per sincronizzare il tuo ID.
       </ThemedText>
 
       <TouchableOpacity 
-        style={[styles.button, isScanning && styles.buttonDisabled]} 
+        style={[styles.button, (isScanning || isConnecting) && styles.buttonDisabled]} 
         onPress={handleStartScan} 
-        disabled={isScanning}
+        disabled={isScanning || isConnecting}
       >
-        {isScanning ? <ActivityIndicator color="white" /> : <ThemedText style={styles.buttonText}>Cerca Box</ThemedText>}
+        {isScanning ? (
+            <ActivityIndicator color="white" /> 
+        ) : (
+            <ThemedText style={styles.buttonText}>Cerca Box</ThemedText>
+        )}
       </TouchableOpacity>
 
       {devices.map(device => (
-        <TouchableOpacity key={device.id} style={styles.deviceCard} onPress={() => handleConnect(device)}>
-           <ThemedText>{device.name || "Box Sconosciuto"}</ThemedText>
-           <ThemedText style={{fontSize: 10}}>{device.id}</ThemedText>
+        <TouchableOpacity 
+            key={device.id} 
+            style={[styles.deviceCard, isConnecting && { opacity: 0.5 }]} 
+            onPress={() => handleConnect(device)}
+            disabled={isConnecting}
+        >
+           <ThemedView style={{flexDirection: 'row', justifyContent: 'space-between', alignItems:'center', backgroundColor: 'transparent'}}>
+               <ThemedView style={{backgroundColor: 'transparent'}}>
+                    <ThemedText type="defaultSemiBold">{device.name || "FastGo Box"}</ThemedText>
+                    <ThemedText style={{fontSize: 12, opacity: 0.6}}>{device.id}</ThemedText>
+               </ThemedView>
+               {isConnecting && <ActivityIndicator color="#2563EB" />}
+           </ThemedView>
         </TouchableOpacity>
       ))}
 
@@ -88,6 +129,7 @@ export default function ConnectDeviceScreen() {
 }
 
 const styles = StyleSheet.create({
+  container: { flex: 1 },
   headerImage: { color: '#3B82F6', bottom: -50, left: -30, position: 'absolute', opacity: 0.3 },
   titleContainer: { flexDirection: 'row', gap: 8, marginBottom: 10 },
   button: { backgroundColor: '#2563EB', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 20 },

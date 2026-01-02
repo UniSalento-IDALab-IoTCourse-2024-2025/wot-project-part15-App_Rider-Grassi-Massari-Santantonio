@@ -48,7 +48,7 @@ export const stopScan = () => {
 };
 
 // Connessione e Handshake
-export const connectToFastGoBox = async (deviceId: string): Promise<Device | null> => {
+export const connectToFastGoBox = async (deviceId: string, riderId: string): Promise<Device | null> => {
     try {
         stopScan();
         console.log(`[BLE] Connessione a ${deviceId}...`);
@@ -66,6 +66,10 @@ export const connectToFastGoBox = async (deviceId: string): Promise<Device | nul
         console.log(`[BLE] Messaggio handshake: ${text}`);
 
         if (text.includes("RiderBox")) {
+            const idCommand = `RIDER_ID:${riderId}`;
+            console.log(`[BLE] Invio Rider ID automatico: ${idCommand}`);
+            
+            await sendCommandToBox(deviceConnection, idCommand);
             return deviceConnection;
         } else {
             throw new Error("Dispositivo non riconosciuto (Handshake fallito)");
