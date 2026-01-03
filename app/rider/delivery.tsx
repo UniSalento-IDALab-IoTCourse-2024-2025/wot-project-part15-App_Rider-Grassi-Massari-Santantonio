@@ -1,22 +1,34 @@
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowRight, Navigation, RefreshCw, ShoppingBag, User } from 'lucide-react-native';
+import { Activity, ArrowRight, Navigation, RefreshCw, ShoppingBag, User } from 'lucide-react-native';
 import mqtt from 'mqtt';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../../context/AuthContext';
-import { getRouteFromOSRM, LatLng, OrderDto, updateOrderStatus } from '../../lib/api';
+import { getBasedUrl, getRouteFromOSRM, LatLng, OrderDto, updateOrderStatus } from '../../lib/api';
 import { sendCommandToBox, sendOrderTopicToBox } from '../../lib/bluetooth';
 
 const { width, height } = Dimensions.get('window');
-
-const MQTT_BROKER_URL = 'ws://10.0.2.2:9001'; 
 
 const parseCoord = (val: string | number | undefined): number => {
     if (val === undefined || val === null) return 0;
     if (typeof val === 'number') return val;
     return parseFloat(val.replace(',', '.'));
+};
+
+const getHealthColor = (status: string) => {
+    // Rimuove eventuali spazi bianchi o newline invisibili
+    const cleanStatus = status.trim();
+    
+    switch (cleanStatus) {
+        case 'VERY_POSITIVE': return '#16A34A'; // Verde Scuro
+        case 'POSITIVE': return '#84CC16';      // Verde Chiaro
+        case 'MEDIUM': return '#EAB308';        // Giallo
+        case 'NEGATIVE': return '#F97316';      // Arancione
+        case 'VERY_NEGATIVE': return '#DC2626'; // Rosso
+        default: return '#64748B';              // Grigio (Waiting)
+    }
 };
 
 export default function DeliveryScreen() {
@@ -29,6 +41,7 @@ export default function DeliveryScreen() {
   const [routeCoords, setRouteCoords] = useState<LatLng[]>([]);
   const [loading, setLoading] = useState(false);
   const [heading, setHeading] = useState(0);
+  const [healthStatus, setHealthStatus] = useState<string>('WAITING');
   
   const mapRef = useRef<MapView>(null);
   const mqttClient = useRef<mqtt.MqttClient | null>(null); 
@@ -45,8 +58,16 @@ export default function DeliveryScreen() {
   }, [params.orderData]);
 
   useEffect(() => {
-    try {
-        const client = mqtt.connect(MQTT_BROKER_URL, {
+    let client: mqtt.MqttClient | null = null;
+
+    const connectMqtt = async () => {
+      try {
+        const baseUrl = await getBasedUrl(); 
+        const brokerUrl = `ws://${baseUrl}:9001`; 
+        
+        console.log("Tentativo connessione a:", brokerUrl);
+    
+        client = mqtt.connect(brokerUrl, {
             clientId: `rider_${Math.random().toString(16).substr(2, 8)}`,
             keepalive: 60,
             reconnectPeriod: 5000,
@@ -54,23 +75,61 @@ export default function DeliveryScreen() {
 
         client.on('connect', () => {
             console.log("MQTT Connesso");
+            if (order?.id) {
+                const topic = `inference/${order.id}/+`;
+                client?.subscribe(topic, (err) => {
+                    if (!err) console.log("Iscritto a:", topic);
+                });
+            }
+        });
+
+        client.on('message', (topic, message) => {
+            try {
+                if (topic.startsWith('inference/')) {
+                    const payload = JSON.parse(message.toString());
+                    
+                    if (payload.status_raw) {
+                        
+                        const rawString = payload.status_raw.toString();
+                        if (rawString.includes(',')) {
+                            const parts = rawString.split(',');
+                           
+                            const label = parts[parts.length - 1]; 
+                            setHealthStatus(label.trim());
+                        } else {
+                            setHealthStatus(rawString.trim());
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Errore parsing MQTT", e);
+            }
         });
 
         client.on('error', (err) => {
-            console.warn(err);
+            console.warn("Errore MQTT:", err);
+        });
+        
+        client.on('offline', () => {
+            console.log("MQTT Offline");
         });
 
         mqttClient.current = client;
 
-        return () => {
-            if (client) {
-                client.end();
-            }
-        };
-    } catch (e) {
-        console.error(e);
-    }
-  }, []);
+      } catch (e) {
+        console.error("Errore nel recupero URL o connessione:", e);
+      }
+    };
+
+    connectMqtt();
+
+    return () => {
+        if (client) {
+            console.log("Chiusura connessione MQTT...");
+            client.end();
+        }
+    };
+  }, [order?.id]);
 
   const isPhasePickup = order?.orderStatus === 'DELIVER'; 
 
@@ -102,9 +161,8 @@ export default function DeliveryScreen() {
       }
       
       subscription = await Location.watchPositionAsync(
-        //ogni 5 secondi si fa il calcolo della posizione, se questa e' variata di di almeno 20 metri
-        //si notifica la nuova posizione
-        { accuracy: Location.Accuracy.High, timeInterval: 5000, distanceInterval: 20 },
+        //ogni 5 secondi se il cambiamento è di almeno 0 metri invia la posizione
+        { accuracy: Location.Accuracy.High, timeInterval: 15000, distanceInterval: 0 },
         (loc) => {
             const newLoc = {
                 latitude: loc.coords.latitude,
@@ -126,6 +184,9 @@ export default function DeliveryScreen() {
                 mqttClient.current.publish(topic, payload, { qos: 0, retain: false }, (err) => {
                     if (err) console.warn(err);
                 });
+            } else {
+                console.log("NON INVIATO: Client disconnesso o Ordine mancante");
+                console.log("Stato:", mqttClient.current?.connected, "Ordine:", !!order);
             }
         }
       );
@@ -238,6 +299,15 @@ export default function DeliveryScreen() {
           </View>
       </View>
 
+      {!isPhasePickup && (
+          <View style={[styles.healthBarContainer, { backgroundColor: getHealthColor(healthStatus) }]}>
+              <Activity size={24} color="white" />
+              <Text style={styles.healthText}>
+                  ORDER HEALTH: {healthStatus.replace('_', ' ')}
+              </Text>
+          </View>
+      )}
+
       <View style={styles.bottomContainer}>
           <View style={styles.infoRow}>
               <View>
@@ -274,6 +344,8 @@ const styles = StyleSheet.create({
   navInstruction: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   navLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   navAddress: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  healthBarContainer: { position: 'absolute', top: 135, left: 15, right: 15, padding: 12, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, elevation: 8 },
+  healthText: { color: 'white', fontSize: 16, fontWeight: 'bold' },
   bottomContainer: { position: 'absolute', bottom: 0, width: '100%', backgroundColor: 'white', borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 25, paddingBottom: 40, elevation: 20 },
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   infoTitle: { fontSize: 20, fontWeight: 'bold', color: '#1E293B' },

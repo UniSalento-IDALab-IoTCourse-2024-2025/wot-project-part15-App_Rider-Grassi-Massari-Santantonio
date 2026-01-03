@@ -6,16 +6,15 @@ const getBaseUrl = () => {
   if (Constants.expoConfig?.hostUri) {
 
     const host = Constants.expoConfig.hostUri.split(':')[0];
-    return `http://${host}`; 
+    return `${host}`; 
   }
 
-
   //return 'http://10.0.2.2'; 
-  return 'http://10.44.109.237'
+  return '10.175.177.237'
 };
-const AUTH_API_BASE = getBaseUrl() + ":8080";
-const SHOP_API_BASE = getBaseUrl() + ":8083";
-const RIDER_API_BASE = getBaseUrl() + ":8082";
+const AUTH_API_BASE = "http://" + getBaseUrl() + ":8080";
+const SHOP_API_BASE = "http://" + getBaseUrl() + ":8083";
+const RIDER_API_BASE = "http://" + getBaseUrl() + ":8082";
 
 
 const getAuthHeaders = async () => {
@@ -115,6 +114,10 @@ export interface ListOrderDto {
   orders: OrderDto[];
 }
 
+export async function getBasedUrl(): Promise<string> {
+  return getBaseUrl();
+  
+}
 
 // Login
 export async function loginUser(credentials: LoginDto): Promise<{ success: boolean; data?: LoginResponse; message?: string }> {
