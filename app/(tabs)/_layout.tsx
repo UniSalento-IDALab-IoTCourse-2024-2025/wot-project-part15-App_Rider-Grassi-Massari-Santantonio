@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { Map, User } from 'lucide-react-native';
+import { Award, History, Map } from 'lucide-react-native';
 export default function TabLayout() {
   const colorScheme = useColorScheme();
 
@@ -17,10 +17,17 @@ export default function TabLayout() {
       />
      
       <Tabs.Screen 
-        name="explore" 
+        name="history" 
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <User color={color} size={24} />,
+          title: 'Storico',
+          tabBarIcon: ({ color }) => <History color={color} size={24} />,
+        }} 
+      />
+    <Tabs.Screen 
+        name="badges" 
+        options={{
+          title: 'Badges',
+          tabBarIcon: ({ color }) => <Award color={color} size={24} />,
         }} 
       />
     </Tabs>

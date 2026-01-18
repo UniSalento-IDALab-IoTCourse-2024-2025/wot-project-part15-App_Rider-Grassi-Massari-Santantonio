@@ -108,3 +108,20 @@ export const sendOrderTopicToBox = async (device: Device | null, topic: string) 
     const command = `TOPIC:${topic}`;
     await sendCommandToBox(device, command);
 };
+
+
+export const sendOrderCompletionWithDetails = async (
+    device: Device | null, 
+    orderId: string, 
+    totalPrice: number, 
+    clientId: string
+) => {
+    if (!device) {
+        console.warn("[BLE] Nessun dispositivo connesso per finalizzare l'ordine.");
+        return;
+    }
+
+    const command = `ORDER_COMPLETED:${orderId}|${totalPrice}|${clientId}`;
+    
+    await sendCommandToBox(device, command);
+};

@@ -7,7 +7,7 @@ import { ActivityIndicator, Alert, Dimensions, StyleSheet, Text, TouchableOpacit
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import { useAuth } from '../../context/AuthContext';
 import { getBasedUrl, getRouteFromOSRM, LatLng, OrderDto, updateOrderStatus } from '../../lib/api';
-import { sendCommandToBox, sendOrderTopicToBox } from '../../lib/bluetooth';
+import { sendOrderCompletionWithDetails, sendOrderTopicToBox } from '../../lib/bluetooth';
 
 const { width, height } = Dimensions.get('window');
 
@@ -18,7 +18,7 @@ const parseCoord = (val: string | number | undefined): number => {
 };
 
 const getHealthColor = (status: string) => {
-    // Rimuove eventuali spazi bianchi o newline invisibili
+
     const cleanStatus = status.trim();
     
     switch (cleanStatus) {
@@ -239,7 +239,12 @@ export default function DeliveryScreen() {
             const success = await updateOrderStatus(order.id, 'DELIVERED');
             if (success) {
                 if (connectedDevice) {
-                    await sendCommandToBox(connectedDevice, `ORDER_COMPLETED:${order.id}`);
+                    await sendOrderCompletionWithDetails(
+                        connectedDevice, 
+                        order.id, 
+                        order.totalPrice, 
+                        order.clientId
+                    );
                 }
                 Alert.alert("Consegna Completata", "Ottimo lavoro!");
                 router.dismissAll(); 

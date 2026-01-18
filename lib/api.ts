@@ -10,11 +10,12 @@ const getBaseUrl = () => {
   }
 
   //return 'http://10.0.2.2'; 
-  return '10.175.177.237'
+  return '100.110.56.128'
 };
 const AUTH_API_BASE = "http://" + getBaseUrl() + ":8080";
 const SHOP_API_BASE = "http://" + getBaseUrl() + ":8083";
 const RIDER_API_BASE = "http://" + getBaseUrl() + ":8082";
+const BLOCKCHAIN_API_BASE = "http://" + getBaseUrl() + ":8085";
 
 
 const getAuthHeaders = async () => {
@@ -117,6 +118,24 @@ export interface ListOrderDto {
 export async function getBasedUrl(): Promise<string> {
   return getBaseUrl();
   
+}
+
+//intefacce nft e stotico ordine per rider
+export interface OrderBlockchainDto {
+  orderId: string;
+  riderId: string;
+  points: number;
+  result: string;
+  orderDate: string;
+  totalPrice: number;
+}
+
+export interface BadgeResponseDto {
+  level: string;
+  tokenId: string;
+  publicUrl: string;
+  ipfsUri: string;
+  assignedAt: string;
 }
 
 // Login
@@ -494,4 +513,52 @@ export async function getCoordinatesFromAddress(street: string, city: string)  {
         console.error("Errore geocoding frontend:", e);
     }
     return null;
+};
+
+export async function getRiderHistory(): Promise<OrderDto[]> {
+  try {
+    const headers = await getAuthHeaders();
+    const response = await fetch(`${RIDER_API_BASE}/order/history`, {
+      method: "GET",
+      headers: headers
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.orders || [];
+    }
+    return [];
+  } catch (error) {
+    console.error("Errore getRiderHistory:", error);
+    return [];
+  }
+};
+
+export async function verifyOrderOnBlockchain(orderId: string): Promise<OrderBlockchainDto | null> {
+  try {
+    const response = await fetch(`${BLOCKCHAIN_API_BASE}/api/blockchain/verify/${orderId}`);
+    if (response.ok) return await response.json();
+    return null;
+  } catch (error) {
+    console.error("Errore verify blockchain:", error);
+    return null;
+  }
+};
+
+export async function getRiderBadges(riderId: string): Promise<BadgeResponseDto[]> {
+  try {
+    const response = await fetch(`${BLOCKCHAIN_API_BASE}/api/nft/rider-badges`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ riderId }),
+    });
+    if (response.status === 204) return [];
+    if (response.ok) {
+      const data = await response.json();
+      return data.badges || [];
+    }
+    return [];
+  } catch (error) {
+    console.error("Errore getRiderBadges:", error);
+    return [];
+  }
 };
