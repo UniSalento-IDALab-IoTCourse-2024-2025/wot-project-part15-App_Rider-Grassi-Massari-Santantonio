@@ -9,6 +9,8 @@ Questa è l'applicazione mobile dedicata ai corrieri (Rider) della piattaforma F
 * **Styling:** NativeWind (Tailwind CSS per React Native)
 * **Bluetooth:** react-native-ble-plx
 * **Stato e Auth:** React Context API
+* **Real-time:** MQTT (via WebSockets)
+* **Mappe:** react-native-maps (Integrazione Google Maps/Apple Maps)
 
 ## Struttura del Progetto
 
@@ -61,6 +63,21 @@ L'applicazione implementa un flusso di navigazione controllato definito in `app/
    * L'utente è autenticato.
    * Il dispositivo BLE è connesso.
 
+L'applicazione comunica con il backend e il broker MQTT. È necessario configurare gli indirizzi IP corretti in base al proprio ambiente di rete.
+
+1. **Broker MQTT:**
+   Aprire il file `app/(tabs)/order.tsx` e aggiornare la costante `MQTT_BROKER_WS`:
+   
+   // Per emulatore Android
+   const MQTT_BROKER_WS = 'ws://10.0.2.2:9001';
+   
+   // Per dispositivo fisico (usare l'IP locale del PC)
+   const MQTT_BROKER_WS = 'ws://192.168.1.X:9001';
+
+2. **Backend API:**
+   Verificare l'URL base nel file `lib/api.ts` (o dove configurato) per puntare al Gateway corretto.
+
+   
 ## Permessi Richiesti
 
 L'applicazione richiede i seguenti permessi per funzionare correttamente (definiti in `app.json` / `plugin config`):
