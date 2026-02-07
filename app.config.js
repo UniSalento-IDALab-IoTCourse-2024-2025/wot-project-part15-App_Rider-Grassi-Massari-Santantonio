@@ -6,7 +6,7 @@ export default {
     slug: "FastGoRider",
     version: "1.0.0",
     orientation: "portrait",
-    icon: "./assets/images/icon.png",
+    icon: "./assets/images/Supercat _preview_rev_1.png",
     scheme: "fastgorider",
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
