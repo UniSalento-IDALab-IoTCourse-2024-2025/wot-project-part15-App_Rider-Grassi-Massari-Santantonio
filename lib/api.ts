@@ -12,11 +12,11 @@ const getBaseUrl = () => {
   //return 'http://10.0.2.2'; 
   return '100.110.56.128'
 };
-const AUTH_API_BASE = "http://" + "52.21.35.190" + ":8080";
-const SHOP_API_BASE = "http://" + "18.233.248.251" + ":8080";
+const AUTH_API_BASE = "http://52.21.35.190:8080";
+const SHOP_API_BASE = "http://18.233.248.251:8080";
 //const RIDER_API_BASE = "http://" + getBaseUrl() + ":8082";
-const RIDER_API_BASE = "http://" + "54.174.240.142" + ":8080";
-const BLOCKCHAIN_API_BASE = "http://" + "18.233.248.251" + ":8081";
+const RIDER_API_BASE = "http://54.174.240.142:8080";
+const BLOCKCHAIN_API_BASE = "http://18.233.248.251:8081";
 
 
 const getAuthHeaders = async () => {
@@ -523,6 +523,8 @@ export async function getRiderHistory(): Promise<OrderDto[]> {
       method: "GET",
       headers: headers
     });
+
+    console.log("Avvio rider hidtory");
     if (response.ok) {
       const data = await response.json();
       return data.orders || [];
